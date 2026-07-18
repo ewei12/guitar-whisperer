@@ -1,0 +1,59 @@
+# Backend -------------
+
+# Uploaded audio files — don't commit user data
+tab-backend/uploads/*
+!tab-backend/uploads/.gitkeep
+
+# venv
+tab-backend/tabenv311/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env*
+tab-backend/.env
+
+# Frontend -------------
+
+# Dependencies
+tab-frontend/node_modules/
+
+# Yarn
+tab-frontend/.pnp
+tab-frontend/.pnp.*
+tab-frontend/.yarn/*
+!tab-frontend/.yarn/patches
+!tab-frontend/.yarn/plugins
+!tab-frontend/.yarn/releases
+!tab-frontend/.yarn/versions
+
+# Next.js build output
+tab-frontend/.next/
+tab-frontend/out/
+
+# Production build
+tab-frontend/build/
+
+# Coverage
+tab-frontend/coverage/
+
+# TypeScript
+*.tsbuildinfo
+tab-frontend/next-env.d.ts
+
+# Vercel
+tab-frontend/.vercel/
+
+# Logs ----------------
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+#misc -----------------
+
+.DS_Store
+*.pem
