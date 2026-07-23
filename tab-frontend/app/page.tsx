@@ -31,7 +31,7 @@ const STRING_OPEN_MIDI: Record<number, number> = {
   1: 64, // E4
 };
 
-const BACKEND = "http://localhost:5002";
+const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5002";
 const TAB_ROW_HEIGHT = 26; // base px at zoom = 1
 
 type ChordEvent = {
