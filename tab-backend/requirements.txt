@@ -36,14 +36,14 @@ msgpack==1.2.1
 narwhals==2.23.0
 networkx==3.6.1
 numba==0.66.0
-numpy==2.1.3
+numpy==1.26.4
 omegaconf==2.3.1
 openunmix==1.3.0
 packaging==26.2
 platformdirs==4.10.0
 pooch==1.9.0
 pretty_midi==0.2.11
-protobuf==5.29.5
+protobuf==4.25.5
 pyaml==26.7.0
 pycparser==3.0
 PyYAML==6.0.3
@@ -65,5 +65,5 @@ treetable==0.2.6
 typing_extensions==4.16.0
 urllib3==2.7.0
 Werkzeug==3.1.8
-tensorflow==2.19.0
-tf-keras==2.19.0
+tensorflow==2.15.0
+setuptools==80.10.2
