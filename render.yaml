@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: backend
+    name: tab-backend
     env: python
-    rootDir: tab-backend
+    rootDir: backend
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn -w 2 -b 0.0.0.0:$PORT --timeout 120 app:app"
+    startCommand: "gunicorn -w 1 -k sync -b 0.0.0.0:$PORT --timeout 300 app:app"
     plan: free

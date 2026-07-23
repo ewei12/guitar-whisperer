@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { transcribeAudio } from "./pollTranscription";
 
 const STRING_COLORS: Record<number, string> = {
   1: "#C98B3C",
@@ -189,10 +190,6 @@ export default function Home() {
   const [audioUrl, setAudioUrl] = useState("");
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState("");
-  // const [separationMode, setSeparationMode] = useState<
-  //   "none" | "guitar" | "melody"
-  // >("none");
-  // const [isolated, setIsolated] = useState<string | null>(null);
   const [tabCurrentTime, setTabCurrentTime] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -247,25 +244,19 @@ export default function Home() {
     formData.append("separation_mode", "none");
 
     try {
-      //  fetch("https://your-backend.up.railway.app/analyze", { method: "POST", body: formData })
-
-      const response = await fetch(`${BACKEND}/analyze`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error("Backend failed");
-
-      const data = await response.json();
-      setTab(data.tab);
-      setNotes(data.notes || []);
-      setEvents(data.events || []);
-      setDuration(data.duration || 0);
-      // setIsolated(data.isolated ?? null);
-      if (data.audio_url) setAudioUrl(`${BACKEND}${data.audio_url}`);
+      const result = await transcribeAudio(formData, BACKEND);
+      setTab(result.tab);
+      setNotes(result.notes || []);
+      setEvents(result.events || []);
+      setDuration(result.duration || 0);
+      if (result.audio_url) setAudioUrl(`${BACKEND}${result.audio_url}`);
     } catch (err) {
       console.error(err);
-      setError("Couldn't reach the backend. Check the server is running.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't reach the backend. Check the server is running.",
+      );
     }
 
     setLoading(false);
@@ -713,79 +704,6 @@ export default function Home() {
                 className="hidden"
               />
             </label>
-            {/* 
-            <div className="mt-6">
-              <p
-                className="text-xs uppercase tracking-widest mb-3 text-center"
-                style={{ color: "#666" }}
-              >
-                What should I listen for?
-              </p>
-
-              <div className="grid grid-cols-3 gap-3">
-                {(
-                  [
-                    {
-                      value: "none",
-                      icon: "🎧",
-                      title: "Full Mix",
-                      desc: "Everything",
-                    },
-                    {
-                      value: "guitar",
-                      icon: "🎸",
-                      title: "Guitar",
-                      desc: "Find tabs",
-                    },
-                    {
-                      value: "melody",
-                      icon: "🎹",
-                      title: "Melody",
-                      desc: "Lead line",
-                    },
-                  ] as const
-                ).map((opt) => {
-                  const selected = separationMode === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setSeparationMode(opt.value)}
-                      className="p-4 text-left transition-all rounded-lg"
-                      style={{
-                        background: selected ? "#2f2d2d" : "#fff",
-                        color: selected ? "#fff" : "#111",
-                        border: "1px solid #111 ",
-                        // boxShadow: selected
-                        //   ? "5px 5px 0 #D94827"
-                        //   : "3px 3px 0 #111",
-                        transform: selected ? "translate(-2px,-2px)" : "none",
-                      }}
-                    >
-                      <div className="text-2xl mb-2">{opt.icon}</div>
-                      <div
-                        className="font-bold text-sm uppercase"
-                        style={{ letterSpacing: "0.05em" }}
-                      >
-                        {opt.title}
-                      </div>
-                      <div
-                        className="text-xs mt-1"
-                        style={{ color: selected ? "#ccc" : "#666" }}
-                      >
-                        {opt.desc}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {separationMode !== "none" && (
-                <p className="text-xs mt-3" style={{ color: "#666" }}>
-                  First run may take longer while the separation model loads.
-                </p>
-              )}
-            </div> */}
 
             <button
               onClick={uploadAudio}
