@@ -3,6 +3,7 @@ import time
 import uuid
 import threading
 import queue
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from flask import Flask, request, jsonify, send_from_directory
 from pitch import audio_to_tab
 from flask_cors import CORS
@@ -14,7 +15,13 @@ UPLOAD_DIR = "uploads"
 MAX_AGE_SECONDS = 6 * 3600  # keep files for 6 hours then remove
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB upload cap
 
+JOB_TIMEOUT_SECONDS = 120
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+def log(msg):
+    print(msg, flush=True)
 
 
 def cleanup_old_uploads():
@@ -46,24 +53,46 @@ def save_upload(audio_file):
 
 # -------- Job Queue --------
 # maxsize is the hard cap on how many jobs can be waiting at once.
-    # When full, new requests get a clean 503 instead of piling on and risking
-    # an OOM.
+# When full, new requests get a clean 503 instead of piling on and risking
+# an OOM.
 job_queue = queue.Queue(maxsize=10)
 jobs = {}  # job_id -> {"status": "queued"|"processing"|"done"|"error", "result": ..., "error": ...}
+
+# Runs the actual audio_to_tab call so we can enforce JOB_TIMEOUT_SECONDS via
+# future.result(timeout=...). max_workers=1 keeps behavior equivalent to the
+# previous single-worker setup -- this isn't adding concurrency, just a way
+# to bound how long we wait on any one job.
+job_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def worker_loop():
     while True:
         job_id, filepath, filename = job_queue.get()
         jobs[job_id]["status"] = "processing"
+        log(f"[worker] starting job {job_id} ({filename})")
+        started = time.time()
+
+        future = job_executor.submit(audio_to_tab, filepath)
         try:
-            result = audio_to_tab(filepath)
+            result = future.result(timeout=JOB_TIMEOUT_SECONDS)
             result["audio_url"] = f"/uploads/{filename}"
             jobs[job_id]["status"] = "done"
             jobs[job_id]["result"] = result
+            log(f"[worker] finished job {job_id} in {time.time() - started:.1f}s")
+        except FutureTimeoutError:
+            jobs[job_id]["status"] = "error"
+            jobs[job_id]["error"] = (
+                f"Processing exceeded {JOB_TIMEOUT_SECONDS}s and was abandoned"
+            )
+            future.cancel()
+            log(
+                f"[worker] job {job_id} TIMED OUT after {JOB_TIMEOUT_SECONDS}s "
+                f"(underlying thread may still be running in the background)"
+            )
         except Exception as e:
             jobs[job_id]["status"] = "error"
             jobs[job_id]["error"] = str(e)
+            log(f"[worker] job {job_id} failed: {e}")
         finally:
             job_queue.task_done()
 
