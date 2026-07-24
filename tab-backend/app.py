@@ -15,7 +15,7 @@ UPLOAD_DIR = "uploads"
 MAX_AGE_SECONDS = 6 * 3600  # keep files for 6 hours then remove
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB upload cap
 
-# Ceiling on a single transcription job
+# Ceiling on single transcription job.
 JOB_TIMEOUT_SECONDS = 120
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -136,10 +136,45 @@ def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
-log("[boot] launching worker_loop and cleanup_loop threads")
-threading.Thread(target=worker_loop, daemon=True).start()
-threading.Thread(target=cleanup_loop, daemon=True).start()
-log("[boot] threads launched")
+_threads_started = False
+_threads_lock = threading.Lock()
+
+
+def _ensure_background_threads_started():
+    """
+    Starting these threads at plain module-import time is broken under
+    gunicorn: the arbiter (master) process imports app:app once to
+    validate it BEFORE forking worker processes. That import triggers
+    threading.Thread(...).start() inside the ARBITER itself. fork() does
+    not carry running threads into the child -- only the forking thread
+    continues -- so the actual serving worker ends up with a private copy
+    of job_queue/jobs but no live consumer thread at all. Every /analyze
+    request then enqueues into a queue nothing is ever reading, while the
+    orphaned thread in the arbiter polls its own separate, forever-empty
+    copy. (Confirmed via pid logging: worker_loop's heartbeats were
+    tagged with the arbiter's pid, not any serving worker's pid.)
+
+    Starting the threads lazily, on the first real HTTP request instead
+    of at import time, guarantees this only ever runs inside a process
+    that actually serves traffic -- the arbiter never handles requests,
+    so it can never trigger this path.
+    """
+    global _threads_started
+    if _threads_started:
+        return
+    with _threads_lock:
+        if _threads_started:
+            return
+        log("[boot] launching worker_loop and cleanup_loop threads (lazy, first-request-triggered)")
+        threading.Thread(target=worker_loop, daemon=True).start()
+        threading.Thread(target=cleanup_loop, daemon=True).start()
+        log("[boot] threads launched")
+        _threads_started = True
+
+
+@app.before_request
+def _start_background_threads_once():
+    _ensure_background_threads_started()
 
 
 if __name__ == "__main__":
