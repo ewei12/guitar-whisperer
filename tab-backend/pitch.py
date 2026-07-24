@@ -7,6 +7,7 @@ import sys
 import io
 import bisect
 import contextlib
+import time as _time
 import librosa
 import numpy as np
 from itertools import product
@@ -444,26 +445,6 @@ class OnsetDetector:
         result = result and peak >= min_abs_peak
         return result, ratio
 
-    # def decay_correlation(self, note_name, other_note, t, span=0.4):
-    #     """
-    #     Correlation between note_name's and other_note's band-passed RMS
-    #     envelopes over the span following t. Returns None if either envelope is too
-    #     flat or too short a window to judge.
-    #     """
-    #     env_a, times_a = self._rms_envelope(note_name)
-    #     env_b, times_b = self._rms_envelope(other_note)
-    #     if env_a is None or env_b is None:
-    #         return None
-
-    #     mask = (times_a >= t) & (times_a <= t + span)
-    #     if np.sum(mask) < 4:
-    #         return None
-
-    #     a, b = env_a[mask], env_b[mask]
-    #     if np.std(a) < 1e-8 or np.std(b) < 1e-8:
-    #         return None
-    #     return float(np.corrcoef(a, b)[0, 1])
-
     def decay_ratio_drift(self, note_name, other_note, t, span=0.4, eps=1e-8):
         """
         A harmonic overtone's amplitude is a fixed fraction of its
@@ -499,91 +480,6 @@ class OnsetDetector:
         slope, intercept = np.polyfit(x, ratio_db, 1)
         detrended = ratio_db - (slope * x + intercept)
         return float(np.std(detrended))
-
-    # def _broadband_envelope(self):
-    #     """
-    #     Onset-strength envelope of the FULL, unfiltered signal -- no
-    #     per-pitch band-pass. Computed once, cached. CONFIRMED unable to
-    #     separate real reattacks from beating between already-ringing
-    #     notes - kept for reference/experimentation.
-    #     """
-    #     key = "broadband_onset"
-    #     if key in self._cache:
-    #         return self._cache[key]
-    #     onset_env = librosa.onset.onset_strength(y=self.y, sr=self.sr)
-    #     onset_times = librosa.frames_to_time(np.arange(len(onset_env)), sr=self.sr)
-    #     self._cache[key] = (onset_env, onset_times)
-    #     return onset_env, onset_times
-
-    # def broadband_has_attack(self, t, window=0.05, rel_thresh=1.5,
-    #                           local_span=0.2, min_abs_peak=0.05, baseline_gap=0.06):
-    #     """
-    #     Same shape check as has_attack, but on the full, unfiltered
-    #     signal's onset envelope. See _broadband_envelope docstring --
-    #     this alone is CONFIRMED insufficient to separate real reattacks
-    #     from beating; kept for reference/experimentation only.
-    #     """
-    #     onset_env, onset_times = self._broadband_envelope()
-    #     if onset_env is None:
-    #         return False, 0.0
-
-    #     window_mask = (onset_times >= t - window) & (onset_times <= t + window)
-    #     if not np.any(window_mask):
-    #         return False, 0.0
-    #     peak = np.max(onset_env[window_mask])
-
-    #     baseline_mask = (
-    #         ((onset_times >= t - local_span) & (onset_times <= t - baseline_gap))
-    #         | ((onset_times >= t + baseline_gap) & (onset_times <= t + local_span))
-    #     )
-    #     if np.any(baseline_mask):
-    #         baseline = np.median(onset_env[baseline_mask])
-    #     else:
-    #         baseline = 1e-4
-    #     baseline = max(baseline, 1e-4)
-
-    #     ratio = peak / baseline
-    #     result = ratio >= rel_thresh or peak >= (min_abs_peak * 3)
-    #     result = result and peak >= min_abs_peak
-    #     return result, ratio
-
-    # def broadband_attack_width(self, t, window=0.05, local_span=0.2, baseline_gap=0.06,
-    #                             half_max_frac=0.5):
-    #     """
-    #     Full-width-at-half-max (seconds) of the broadband onset peak
-    #     nearest t. CONFIRMED unable to separate real reattacks from
-    #     beating. Kept for reference/experimentation only.
-    #     """
-    #     onset_env, onset_times = self._broadband_envelope()
-    #     if onset_env is None:
-    #         return None
-
-    #     window_mask = (onset_times >= t - window) & (onset_times <= t + window)
-    #     if not np.any(window_mask):
-    #         return None
-    #     idx_in_window = np.where(window_mask)[0]
-    #     peak_idx = idx_in_window[np.argmax(onset_env[idx_in_window])]
-    #     peak_val = onset_env[peak_idx]
-
-    #     baseline_mask = (
-    #         ((onset_times >= t - local_span) & (onset_times <= t - baseline_gap))
-    #         | ((onset_times >= t + baseline_gap) & (onset_times <= t + local_span))
-    #     )
-    #     baseline = np.median(onset_env[baseline_mask]) if np.any(baseline_mask) else 1e-4
-    #     baseline = max(baseline, 1e-4)
-
-    #     half_max = baseline + half_max_frac * (peak_val - baseline)
-
-    #     left = peak_idx
-    #     while left > 0 and onset_env[left] > half_max:
-    #         left -= 1
-    #     right = peak_idx
-    #     while right < len(onset_env) - 1 and onset_env[right] > half_max:
-    #         right += 1
-
-    #     if left == peak_idx and right == peak_idx:
-    #         return 0.0
-    #     return float(onset_times[right] - onset_times[left])
 
 
 # --------------------------------------------------------------------------
@@ -809,12 +705,6 @@ class StringTracker:
                 if drift is not None:
                     ghost_call = drift <= effective_drift_thresh
                 else:
-                    # Can't measure drift (span too short/quiet -- common in
-                    # the first ~0.1-0.2s of a track, or for a fast-decaying
-                    # note). Falling through to "not a ghost" here throws
-                    # away the interval+amplitude evidence that already got
-                    # us into this branch. Fall back to a tighter
-                    # amplitude-only check instead of defaulting to real.
                     ghost_call = amp <= other["amp"] * no_drift_amp_ratio_thresh
 
                 if self.debug:
@@ -1250,11 +1140,18 @@ def inspect_raw_activations(filepath, t_start, t_end, top_k=8):
 # --------------------------------------------------------------------------
 
 def audio_to_tab(filepath, debug=False, onset_threshold=0.5, frame_threshold=0.3):
+    _t0 = _time.time()
+
+    def _checkpoint(label, **extra):
+        extras = " ".join(f"{k}={v}" for k, v in extra.items())
+        print(f"[audio_to_tab] {label}: {_time.time() - _t0:.1f}s elapsed {extras}", flush=True)
+
     _, _, note_events = _quiet_predict(
         filepath,
         onset_threshold=onset_threshold,
         frame_threshold=frame_threshold,
     )
+    _checkpoint("basic_pitch predict done", raw_note_events=len(note_events))
 
     GUITAR_LOW_MIDI = librosa.note_to_midi('E2')
     GUITAR_HIGH_MIDI = librosa.note_to_midi('E6')
@@ -1272,13 +1169,16 @@ def audio_to_tab(filepath, debug=False, onset_threshold=0.5, frame_threshold=0.3
 
     raw_notes = merge_duplicate_raw_notes(raw_notes)
     raw_notes = group_notes_by_attack(raw_notes)
+    _checkpoint("note filtering/grouping done", note_count=len(raw_notes))
     if debug:
         for n in raw_notes:
             print(f"  RAW: {n['note']} @ {n['time']:.3f}s->{n['end']:.3f}s amp={n['amp']:.4f}")
 
     y, sr = librosa.load(filepath, sr=None)
+    _checkpoint("audio reloaded for analysis", duration_s=round(len(y) / sr, 1))
 
     attacks = detect_guitar_attacks(y, sr)
+    _checkpoint("attack detection done", attack_count=len(attacks))
 
     if debug:
         print("\nPLUCK ATTACKS:")
@@ -1294,21 +1194,28 @@ def audio_to_tab(filepath, debug=False, onset_threshold=0.5, frame_threshold=0.3
 
     onset_detector = OnsetDetector(y, sr)
 
-    # Recover same-pitch replucks that basic_pitch's onset model missed --
-    # see inject_missed_replucks docstring.
     raw_notes = inject_missed_replucks(raw_notes, attacks, onset_detector, debug=debug)
+    unique_pitches = len({n["note"] for n in raw_notes})
+    _checkpoint("repluck injection done", unique_pitches=unique_pitches)
 
     tracker = StringTracker(FRETBOARD, onset_detector, debug=debug)
     accepted_notes = tracker.process(raw_notes)
+    _checkpoint("StringTracker.process done", accepted_notes=len(accepted_notes))
 
     chords = group_into_chords(accepted_notes, max_span=0.13)
     chord_events = chords_to_events(chords)
+    _checkpoint("chord grouping done", chord_count=len(chord_events))
+
     refined = refine_positions(chord_events, FRETBOARD)
+    _checkpoint("chord fingering refinement done")
+
     tab_text, events = notes_to_tab(refined)
 
     duration = float(librosa.get_duration(y=y, sr=sr))
     for i, ev in enumerate(events):
         ev["end_time"] = events[i + 1]["time"] if i + 1 < len(events) else duration
+
+    _checkpoint("audio_to_tab complete")
 
     return {
         "chords": [{"time": c["time"], "notes": c["notes"]} for c in chord_events],
