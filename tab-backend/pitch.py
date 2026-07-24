@@ -212,12 +212,49 @@ def _quiet_predict(*args, **kwargs):
     the call to silence them without hiding anything from this file's
     own prints (--debug, --inspect, etc.), which happen outside this
     function.
+
+    Also passes the pre-loaded _BASIC_PITCH_MODEL so predict()
+    reuses one loaded model instead of reloading + rebuilding the whole
+    TensorFlow graph from disk on every single call.
     """
     from basic_pitch.inference import predict
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        result = predict(*args, **kwargs)
+        result = predict(*args, _get_basic_pitch_model(), **kwargs)
     return result
+
+
+_BASIC_PITCH_MODEL = None
+_BASIC_PITCH_MODEL_LOCK = None
+
+
+def _get_basic_pitch_model():
+    """
+    Loads basic_pitch's own Model wrapper class exactly once per process
+    and caches it in a module-level global. All subsequent audio_to_tab
+    calls in this process reuse the same loaded model object. Guarded by
+    a lock since multiple request threads (gthread) could otherwise race
+    to load it simultaneously on the very first few concurrent requests.
+    """
+    global _BASIC_PITCH_MODEL, _BASIC_PITCH_MODEL_LOCK
+    if _BASIC_PITCH_MODEL is not None:
+        return _BASIC_PITCH_MODEL
+
+    import threading as _threading
+    if _BASIC_PITCH_MODEL_LOCK is None:
+        _BASIC_PITCH_MODEL_LOCK = _threading.Lock()
+
+    with _BASIC_PITCH_MODEL_LOCK:
+        if _BASIC_PITCH_MODEL is None:
+            import time as _time
+            _start = _time.time()
+            print("[basic_pitch] loading model for the first time in this process...", flush=True)
+            from basic_pitch.inference import Model
+            from basic_pitch import ICASSP_2022_MODEL_PATH
+            _BASIC_PITCH_MODEL = Model(str(ICASSP_2022_MODEL_PATH))
+            print(f"[basic_pitch] model loaded in {_time.time() - _start:.1f}s, "
+                  f"will be reused for all future requests in this process", flush=True)
+    return _BASIC_PITCH_MODEL
 
 STRINGS = {
     6: 'E2', 5: 'A2', 4: 'D3', 3: 'G3', 2: 'B3', 1: 'E4',
