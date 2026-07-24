@@ -66,6 +66,7 @@ job_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def worker_loop():
+    log("[worker] worker_loop thread started, waiting for jobs")
     while True:
         job_id, filepath, filename = job_queue.get()
         jobs[job_id]["status"] = "processing"
@@ -130,8 +131,10 @@ def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
+log("[boot] launching worker_loop and cleanup_loop threads")
 threading.Thread(target=worker_loop, daemon=True).start()
 threading.Thread(target=cleanup_loop, daemon=True).start()
+log("[boot] threads launched")
 
 
 if __name__ == "__main__":
