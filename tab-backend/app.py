@@ -15,6 +15,7 @@ UPLOAD_DIR = "uploads"
 MAX_AGE_SECONDS = 6 * 3600  # keep files for 6 hours then remove
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB upload cap
 
+# Ceiling on a single transcription job.
 JOB_TIMEOUT_SECONDS = 120
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -58,17 +59,17 @@ def save_upload(audio_file):
 job_queue = queue.Queue(maxsize=10)
 jobs = {}  # job_id -> {"status": "queued"|"processing"|"done"|"error", "result": ..., "error": ...}
 
-# Runs the actual audio_to_tab call so we can enforce JOB_TIMEOUT_SECONDS via
-# future.result(timeout=...). max_workers=1 keeps behavior equivalent to the
-# previous single-worker setup -- this isn't adding concurrency, just a way
-# to bound how long we wait on any one job.
 job_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def worker_loop():
-    log("[worker] worker_loop thread started, waiting for jobs")
+    log(f"[worker] worker_loop thread started (id={threading.get_ident()}), waiting for jobs")
     while True:
-        job_id, filepath, filename = job_queue.get()
+        try:
+            job_id, filepath, filename = job_queue.get(timeout=10)
+        except queue.Empty:
+            log(f"[worker] heartbeat: still waiting, qsize={job_queue.qsize()}")
+            continue
         jobs[job_id]["status"] = "processing"
         log(f"[worker] starting job {job_id} ({filename})")
         started = time.time()
@@ -111,6 +112,10 @@ def analyze():
     jobs[job_id] = {"status": "queued"}
     try:
         job_queue.put_nowait((job_id, filepath, filename))
+        log(
+            f"[analyze] enqueued job {job_id} from thread id={threading.get_ident()}, "
+            f"qsize now={job_queue.qsize()}"
+        )
     except queue.Full:
         del jobs[job_id]
         return jsonify({"error": "Server is at capacity, please try again shortly"}), 503
