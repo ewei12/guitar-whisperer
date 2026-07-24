@@ -21,15 +21,45 @@ type JobStatus = {
   error?: string;
 };
 
+async function fetchWithRetry(
+  url: string,
+  init?: RequestInit,
+  retries = 2,
+  backoffMs = 500,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, backoffMs * (attempt + 1)),
+        );
+      }
+    }
+  }
+  const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new Error(`Network error reaching server: ${detail}`);
+}
+
 export async function transcribeAudio(
   formData: FormData,
   backendUrl: string,
   { pollIntervalMs = 1500, timeoutMs = 180000 } = {},
 ): Promise<TranscriptionResult> {
-  const submitRes = await fetch(`${backendUrl}/analyze`, {
-    method: "POST",
-    body: formData,
-  });
+  let submitRes: Response;
+  try {
+    submitRes = await fetchWithRetry(`${backendUrl}/analyze`, {
+      method: "POST",
+      body: formData,
+    });
+  } catch (err) {
+    throw new Error(
+      `Upload failed: ${err instanceof Error ? err.message : "could not reach the server"}`,
+    );
+  }
 
   if (submitRes.status === 503) {
     throw new Error("Server is at capacity, please try again shortly");
@@ -49,9 +79,17 @@ export async function transcribeAudio(
       );
     }
 
-    const statusRes = await fetch(`${backendUrl}/status/${job_id}`);
+    let statusRes: Response;
+    try {
+      statusRes = await fetchWithRetry(`${backendUrl}/status/${job_id}`);
+    } catch (err) {
+      throw new Error(
+        `Lost connection while checking job ${job_id}: ${err instanceof Error ? err.message : "network error"}`,
+      );
+    }
+
     if (!statusRes.ok) {
-      throw new Error(`Lost track of job ${job_id}`);
+      throw new Error(`Lost track of job ${job_id} (${statusRes.status})`);
     }
     const job = (await statusRes.json()) as JobStatus;
 
