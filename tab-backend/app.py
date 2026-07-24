@@ -15,14 +15,14 @@ UPLOAD_DIR = "uploads"
 MAX_AGE_SECONDS = 6 * 3600  # keep files for 6 hours then remove
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB upload cap
 
-# Ceiling on a single transcription job.
+# Ceiling on a single transcription job
 JOB_TIMEOUT_SECONDS = 120
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 def log(msg):
-    print(msg, flush=True)
+    print(f"[pid={os.getpid()}] {msg}", flush=True)
 
 
 def cleanup_old_uploads():
