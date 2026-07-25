@@ -44,10 +44,7 @@ def save_upload(audio_file):
 def analyze():
     """
     Accepts the upload, enqueues the transcription job into Redis, and
-    returns immediately with a job_id. Nothing in this function does any
-    ML work -- it's just: save the file, hand the job to RQ, respond.
-    This route should always be fast regardless of how long transcription
-    itself takes, since the two are now fully decoupled.
+    returns immediately with a job_id.
     """
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
@@ -63,12 +60,7 @@ def analyze():
 @app.route("/status/<job_id>")
 def status(job_id):
     """
-    Reads the job's current state directly from Redis via RQ's Job class
-    -- there is no in-memory `jobs` dict anymore. This is the key
-    structural fix from the old design: job state now lives somewhere
-    every process (this API, any number of workers, even a redeployed
-    fresh instance of this API) can see identically, instead of living
-    only in whichever single process happened to create it.
+    Reads the job's current state directly from Redis via RQ's Job class.
     """
     try:
         job = Job.fetch(job_id, connection=redis_conn)
