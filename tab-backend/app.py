@@ -7,7 +7,7 @@ from redis import Redis
 from rq import Queue
 from rq.job import Job
 
-from tasks import run_transcription
+JOB_FUNCTION_PATH = "tasks.run_transcription"
 
 app = Flask(__name__)
 CORS(app)
@@ -20,7 +20,6 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 redis_conn = Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379"))
 job_queue = Queue("transcription", connection=redis_conn, default_timeout=600)
-
 
 def cleanup_old_uploads():
     cutoff = time.time() - MAX_AGE_SECONDS
@@ -56,7 +55,7 @@ def analyze():
     audio = request.files["audio"]
     filepath, filename = save_upload(audio)
 
-    job = job_queue.enqueue(run_transcription, filepath, filename)
+    job = job_queue.enqueue(JOB_FUNCTION_PATH, filepath, filename)
 
     return jsonify({"job_id": job.id}), 202
 
@@ -64,7 +63,12 @@ def analyze():
 @app.route("/status/<job_id>")
 def status(job_id):
     """
-    Reads the job's current state directly from Redis with RQ's Job class
+    Reads the job's current state directly from Redis via RQ's Job class
+    -- there is no in-memory `jobs` dict anymore. This is the key
+    structural fix from the old design: job state now lives somewhere
+    every process (this API, any number of workers, even a redeployed
+    fresh instance of this API) can see identically, instead of living
+    only in whichever single process happened to create it.
     """
     try:
         job = Job.fetch(job_id, connection=redis_conn)
