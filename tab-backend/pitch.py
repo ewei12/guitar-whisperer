@@ -213,9 +213,13 @@ def _quiet_predict(*args, **kwargs):
     own prints (--debug, --inspect, etc.), which happen outside this
     function.
 
-    Also passes the pre-loaded _BASIC_PITCH_MODEL so predict()
+    Also passes the pre-loaded _BASIC_PITCH_MODEL (see below) so predict()
     reuses one loaded model instead of reloading + rebuilding the whole
-    TensorFlow graph from disk on every single call.
+    TensorFlow graph from disk on every single call -- confirmed via
+    Spotify's own basic_pitch docs as the standard fix for "redundant and
+    sluggish" repeated inference, and confirmed here as the actual cause
+    of requests never getting past the first pipeline stage within our
+    120s job timeout on Render.
     """
     from basic_pitch.inference import predict
     buf = io.StringIO()
@@ -225,7 +229,7 @@ def _quiet_predict(*args, **kwargs):
 
 
 _BASIC_PITCH_MODEL = None
-_BASIC_PITCH_MODEL_LOCK = None
+_BASIC_PITCH_MODEL_LOCK = None  # set below, after threading is available
 
 
 def _get_basic_pitch_model():
@@ -250,8 +254,21 @@ def _get_basic_pitch_model():
             _start = _time.time()
             print("[basic_pitch] loading model for the first time in this process...", flush=True)
             from basic_pitch.inference import Model
-            from basic_pitch import ICASSP_2022_MODEL_PATH
-            _BASIC_PITCH_MODEL = Model(str(ICASSP_2022_MODEL_PATH))
+            import basic_pitch
+            import pathlib
+            tflite_model_path = (
+                pathlib.Path(basic_pitch.__file__).parent
+                / "saved_models" / "icassp_2022" / "nmp.tflite"
+            )
+            # Using the TFLite model explicitly (rather than
+            # ICASSP_2022_MODEL_PATH, which only defaults to TFLite when
+            # TensorFlow isn't installed) plus tflite-runtime instead of
+            # full tensorflow in requirements.txt is what actually cuts
+            # memory usage -- the bulk of the cost was importing the full
+            # TensorFlow package itself (confirmed via the cuda_dnn/
+            # cuda_fft/XLA init lines that appeared on every boot), not
+            # the SavedModel format specifically.
+            _BASIC_PITCH_MODEL = Model(str(tflite_model_path))
             print(f"[basic_pitch] model loaded in {_time.time() - _start:.1f}s, "
                   f"will be reused for all future requests in this process", flush=True)
     return _BASIC_PITCH_MODEL
