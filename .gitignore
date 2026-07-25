@@ -1,13 +1,13 @@
 # Backend -------------
 
-# Uploaded audio files — don't commit user data
+# uploaded audio files
 tab-backend/uploads/*
 !tab-backend/uploads/.gitkeep
 
 # venv
 tab-backend/tabenv311/
 
-# Python cache
+# python cache
 __pycache__/
 *.py[cod]
 
