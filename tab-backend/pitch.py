@@ -256,19 +256,20 @@ def _get_basic_pitch_model():
             from basic_pitch.inference import Model
             import basic_pitch
             import pathlib
-            tflite_model_path = (
+            onnx_model_path = (
                 pathlib.Path(basic_pitch.__file__).parent
-                / "saved_models" / "icassp_2022" / "nmp.tflite"
+                / "saved_models" / "icassp_2022" / "nmp.onnx"
             )
-            # Using the TFLite model explicitly (rather than
-            # ICASSP_2022_MODEL_PATH, which only defaults to TFLite when
-            # TensorFlow isn't installed) plus tflite-runtime instead of
-            # full tensorflow in requirements.txt is what actually cuts
-            # memory usage -- the bulk of the cost was importing the full
-            # TensorFlow package itself (confirmed via the cuda_dnn/
-            # cuda_fft/XLA init lines that appeared on every boot), not
-            # the SavedModel format specifically.
-            _BASIC_PITCH_MODEL = Model(str(tflite_model_path))
+            # Using ONNX instead of TFLite: tflite-runtime has no
+            # installable wheel for this platform/Python version at all
+            # (confirmed: `pip install tflite-runtime` fails with "No
+            # matching distribution found"), so that path was a dead end.
+            # ONNX, via onnxruntime, has solid wheel availability on
+            # Linux/Python 3.11 (what Render runs) and avoids needing
+            # TensorFlow installed at all -- which is the actual memory
+            # win, since importing full TensorFlow was the majority of
+            # the container's memory footprint.
+            _BASIC_PITCH_MODEL = Model(str(onnx_model_path))
             print(f"[basic_pitch] model loaded in {_time.time() - _start:.1f}s, "
                   f"will be reused for all future requests in this process", flush=True)
     return _BASIC_PITCH_MODEL
