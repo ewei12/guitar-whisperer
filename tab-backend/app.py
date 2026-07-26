@@ -1,25 +1,24 @@
 import os
 import time
 import uuid
+import modal
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from redis import Redis
-from rq import Queue
-from rq.job import Job
-
-JOB_FUNCTION_PATH = "tasks.run_transcription"
 
 app = Flask(__name__)
 CORS(app)
 
 UPLOAD_DIR = "uploads"
-MAX_AGE_SECONDS = 6 * 3600  # keep files for 6 hours then remove
-app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB upload cap
+MAX_AGE_SECONDS = 6 * 3600
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-redis_conn = Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379"))
-job_queue = Queue("transcription", connection=redis_conn, default_timeout=600)
+MODAL_APP_NAME = "guitar-whisperer"
+transcribe_fn = modal.Function.from_name(MODAL_APP_NAME, "transcribe")
+
+_last_cleanup = 0  # replaces the Redis-based throttle timestamp
+
 
 def cleanup_old_uploads():
     cutoff = time.time() - MAX_AGE_SECONDS
@@ -42,38 +41,34 @@ def save_upload(audio_file):
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    """
-    Accepts the upload, enqueues the transcription job into Redis, and
-    returns immediately with a job_id.
-    """
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
 
     audio = request.files["audio"]
     filepath, filename = save_upload(audio)
 
-    job = job_queue.enqueue(JOB_FUNCTION_PATH, filepath, filename)
+    with open(filepath, "rb") as f:
+        audio_bytes = f.read()
 
-    return jsonify({"job_id": job.id}), 202
+    call = transcribe_fn.spawn(audio_bytes, filename)
+
+    return jsonify({"job_id": call.object_id}), 202
 
 
 @app.route("/status/<job_id>")
 def status(job_id):
-    """
-    Reads the job's current state directly from Redis via RQ's Job class.
-    """
     try:
-        job = Job.fetch(job_id, connection=redis_conn)
+        call = modal.FunctionCall.from_id(job_id)
     except Exception:
         return jsonify({"error": "unknown job_id"}), 404
 
-    if job.is_finished:
-        return jsonify({"status": "done", "result": job.result})
-    if job.is_failed:
-        return jsonify({"status": "error", "error": str(job.exc_info)})
-    if job.is_started:
+    try:
+        result = call.get(timeout=0)
+        return jsonify({"status": "done", "result": result})
+    except TimeoutError:
         return jsonify({"status": "processing"})
-    return jsonify({"status": "queued"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)})
 
 
 @app.route("/uploads/<path:filename>")
@@ -83,10 +78,10 @@ def uploaded_file(filename):
 
 @app.before_request
 def _occasional_cleanup():
-    last = redis_conn.get("last_cleanup")
+    global _last_cleanup
     now = time.time()
-    if last is None or now - float(last) > 3600:
-        redis_conn.set("last_cleanup", now)
+    if now - _last_cleanup > 3600:
+        _last_cleanup = now
         cleanup_old_uploads()
 
 
