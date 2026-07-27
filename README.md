@@ -6,7 +6,7 @@ chord names and fingering.
 ## Overview
 
 Given an audio file, the pipeline:
-1. Runs [Basic Pitch] (Spotify's pitch detection model) to get raw note events
+1. Runs Basic Pitch (Spotify's pitch detection model) to get raw note events
 2. Passes those through a custom **string-physics simulation** (`StringTracker`) 
    that assigns each note to a specific string/fret, using real onset/decay 
    analysis to distinguish genuine plucks from harmonic overtones, crosstalk 
