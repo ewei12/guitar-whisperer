@@ -29,13 +29,11 @@ def detect_guitar_attacks(y, sr, hop_length=256,
     Basic Pitch finds pitches.
     This finds when a string was actually struck.
     """
-
     onset_env = librosa.onset.onset_strength(
         y=y,
         sr=sr,
         hop_length=hop_length
     )
-
     peaks, props = find_peaks(
         onset_env,
         distance=int(min_gap * sr / hop_length),
@@ -70,44 +68,31 @@ def snap_notes_to_attacks(notes, attacks, max_distance=0.08):
 
     Removes many harmonic ghosts because they usually don't have their own transient.
     """
-
     snapped = []
-
     attack_times = [
         a["time"] for a in attacks
     ]
-
     for n in notes:
-
         nearest = min(
             attack_times,
             key=lambda x: abs(x - n["time"])
         ) if attack_times else None
-
         if nearest is not None and abs(nearest - n["time"]) <= max_distance:
-
             n = dict(n)
-
             shift = nearest - n["time"]
-
             n["time"] = round(nearest, 3)
-
             # move end time with it
             n["end"] = round(
                 max(
                     n["time"] + 0.03,
                     n["end"] + shift
-                ),
-                3
+                ),3
             )
-
             snapped.append(n)
-
         else:
             # keep only if it was a very strong event
             if n["amp"] > 0.8:
                 snapped.append(n)
-
     return snapped
 
 def inject_missed_replucks(raw_notes, attacks, onset_detector, min_gap_from_start=0.12,
@@ -198,7 +183,6 @@ def inject_missed_replucks(raw_notes, attacks, onset_detector, min_gap_from_star
         tail = dict(n)
         tail["time"] = segment_start
         result.append(tail)
-
     result.sort(key=lambda x: x["time"])
     return result
 
@@ -278,7 +262,6 @@ STRINGS = {
     6: 'E2', 5: 'A2', 4: 'D3', 3: 'G3', 2: 'B3', 1: 'E4',
 }
 
-
 def build_fretboard(max_fret=12):
     fretboard = {}
     for string_num, open_note in STRINGS.items():
@@ -311,11 +294,9 @@ def merge_duplicate_raw_notes(raw_notes, gap_thresh=0.05):
     """
     if not raw_notes:
         return raw_notes
-
     by_note = {}
     for n in raw_notes:
         by_note.setdefault(n["note"], []).append(n)
-
     merged = []
     for note_name, group in by_note.items():
         group.sort(key=lambda x: x["time"])
@@ -340,14 +321,11 @@ def group_notes_by_attack(notes, attack_window=0.06):
     Guitar strings in a chord are not perfectly simultaneous.
     A strum can easily spread over 50-100ms.
     """
-
     if not notes:
         return notes
-
     groups = []
     current = [notes[0]]
     start = notes[0]["time"]
-
     for n in notes[1:]:
         if n["time"] - start <= attack_window:
             current.append(n)
@@ -355,26 +333,19 @@ def group_notes_by_attack(notes, attack_window=0.06):
             groups.append(current)
             current = [n]
             start = n["time"]
-
     groups.append(current)
-
     result = []
-
     for group in groups:
         attack_time = min(
             n["time"] for n in group
         )
-
         for n in group:
             n = dict(n)
             offset = n["time"] - attack_time
-
             # pull harmonic companions into the same event
             if offset <= attack_window:
                 n["time"] = round(attack_time, 3)
-
             result.append(n)
-
     return sorted(
         result,
         key=lambda x: x["time"]
@@ -388,16 +359,13 @@ HARMONIC_SEMITONES = (12, 19, 24, 28, 31, 36)
 
 
 # --------------------------------------------------------------------------
-# Stage 0: onset + decay-envelope signals, computed once per pitch and
-# cached.
-# --------------------------------------------------------------------------
+# Stage 0: onset + decay-envelope signals, computed once per pitch and cached
 
 class OnsetDetector:
     """
     Computes band-passed onset-strength and RMS-decay envelopes around a
     specific note's fundamental frequency, cached per note name.
     """
-
     def __init__(self, y, sr, bandwidth_semitones=0.6):
         self.y = y
         self.sr = sr
@@ -467,14 +435,7 @@ class OnsetDetector:
                    local_span=0.2, min_abs_peak=0.05, baseline_gap=0.06):
         """
         True if there's a genuine fresh attack for this pitch near time t,
-        judged against a narrow local baseline (+/- local_span around t,
-        excluding baseline_gap immediately next to t).
-
-        CONFIRMED LIMITATION: this cannot distinguish a real note from a
-        harmonic ghost of a note sounding at the same instant -- both
-        produce a genuine transient in this pitch's band. _is_harmonic_ghost
-        falls back to decay_ratio_drift specifically for cases this method
-        cannot resolve.
+        judged against a narrow local baseline.
         """
         onset_env, onset_times = self._envelope(note_name)
         if onset_env is None:
@@ -539,7 +500,6 @@ class OnsetDetector:
 
 # --------------------------------------------------------------------------
 # Stage 1 + 2: physical string-state simulation.
-# --------------------------------------------------------------------------
 
 class StringTracker:
     def __init__(self, fretboard, onset_detector, prefer_open=True,
@@ -1003,7 +963,6 @@ def chords_to_events(chords, early_window=0.13):
 
 # --------------------------------------------------------------------------
 # Chord naming
-# --------------------------------------------------------------------------
 
 PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
@@ -1043,8 +1002,7 @@ def identify_chord(note_names):
 
 
 # --------------------------------------------------------------------------
-# Stage 4: fingering refinement.
-# --------------------------------------------------------------------------
+# Stage 4: fingering optimization
 
 def score_combo(combo, prev_positions):
     frets = [c[1] for c in combo]
@@ -1064,7 +1022,6 @@ def score_combo(combo, prev_positions):
 def refine_positions(chord_events, fretboard, max_candidates=3):
     prev_positions = None
     refined = []
-
     for chord in chord_events:
         note_names = chord["notes"]
         options_per_note = [fretboard.get(n, []) for n in note_names]
@@ -1152,7 +1109,6 @@ def notes_to_tab(refined_chords):
 
 # --------------------------------------------------------------------------
 # Diagnostic: raw pre-threshold activation inspector.
-# --------------------------------------------------------------------------
 
 def inspect_raw_activations(filepath, t_start, t_end, top_k=8):
     model_output, _, _ = _quiet_predict(filepath, onset_threshold=0.0, frame_threshold=0.0)
@@ -1192,7 +1148,6 @@ def inspect_raw_activations(filepath, t_start, t_end, top_k=8):
 
 # --------------------------------------------------------------------------
 # Top-level pipeline
-# --------------------------------------------------------------------------
 
 def audio_to_tab(filepath, debug=False, onset_threshold=0.5, frame_threshold=0.3):
     _t0 = _time.time()
