@@ -20,15 +20,6 @@ tab-backend/.env
 # Dependencies
 tab-frontend/node_modules/
 
-# Yarn
-tab-frontend/.pnp
-tab-frontend/.pnp.*
-tab-frontend/.yarn/*
-!tab-frontend/.yarn/patches
-!tab-frontend/.yarn/plugins
-!tab-frontend/.yarn/releases
-!tab-frontend/.yarn/versions
-
 # Next.js build output
 tab-frontend/.next/
 tab-frontend/out/
