@@ -17,7 +17,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 MODAL_APP_NAME = "guitar-whisperer"
 transcribe_fn = modal.Function.from_name(MODAL_APP_NAME, "transcribe")
 
-_last_cleanup = 0  # replaces the Redis-based throttle timestamp
+_last_cleanup = 0
 
 
 def cleanup_old_uploads():
