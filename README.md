@@ -5,7 +5,7 @@ chord names and fingering.
 
 ## Overview
 
-Given an audio file, the pipeline:
+Given an audio file, the process:
 
 1. Runs Basic Pitch (Spotify's pitch detection model) to get raw note events
 2. Passes those through a custom **string-physics simulation** (`StringTracker`)
