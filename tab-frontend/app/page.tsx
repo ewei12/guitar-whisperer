@@ -66,19 +66,27 @@ function fretToFrequency(stringNum: number, fret: number) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
-function FretDiagram({ event }: { event: ChordEvent | undefined }) {
+function FretDiagram({
+  event,
+  zoom = 1,
+}: {
+  event: ChordEvent | undefined;
+  zoom?: number;
+}) {
   const width = 230;
-  const height = 170;
-  const topMargin = 14;
-  const bottomMargin = 30;
-  const markerMargin = 22;
-  const nutX = 46;
   const rightMargin = 14;
+  const nutX = 46;
   const numFretsShown = 4;
   const stringOrder = [1, 2, 3, 4, 5, 6];
+  const INLAY_FRETS = [3, 5, 7, 9, 12, 15];
 
-  const stringGap =
-    (height - topMargin - bottomMargin) / (stringOrder.length - 1);
+  const stringGap = TAB_ROW_HEIGHT * zoom;
+  const topMargin = 22 * zoom + stringGap / 2;
+  const bottomMargin = 24;
+  const markerMargin = 22;
+  const height =
+    topMargin + stringGap * (stringOrder.length - 1) + bottomMargin;
+
   const fretGap = (width - nutX - rightMargin) / numFretsShown;
 
   const frets = event?.frets;
@@ -90,13 +98,50 @@ function FretDiagram({ event }: { event: ChordEvent | undefined }) {
 
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {INLAY_FRETS.map((f) => {
+        const rel = f - baseFret;
+        if (rel < 1 || rel > numFretsShown) return null;
+        const x = nutX + fretGap * (rel - 0.5);
+        const midY = topMargin + (height - topMargin - bottomMargin) / 2;
+        if (f === 12 || f === 24) {
+          return (
+            <g key={f}>
+              <circle
+                cx={x}
+                cy={midY - 12}
+                r={3.5}
+                fill="#B89568"
+                opacity={0.6}
+              />
+              <circle
+                cx={x}
+                cy={midY + 12}
+                r={3.5}
+                fill="#B89568"
+                opacity={0.6}
+              />
+            </g>
+          );
+        }
+        return (
+          <circle
+            key={f}
+            cx={x}
+            cy={midY}
+            r={3.5}
+            fill="#B89568"
+            opacity={0.6}
+          />
+        );
+      })}
+
       <line
         x1={nutX}
         y1={topMargin}
         x2={nutX}
         y2={height - bottomMargin}
-        stroke="#4A2E23"
-        strokeWidth={baseFret === 0 ? 4 : 1.5}
+        stroke="#2A1B10"
+        strokeWidth={baseFret === 0 ? 5 : 1.5}
       />
       {Array.from({ length: numFretsShown }).map((_, i) => (
         <line
@@ -105,10 +150,11 @@ function FretDiagram({ event }: { event: ChordEvent | undefined }) {
           y1={topMargin}
           x2={nutX + fretGap * (i + 1)}
           y2={height - bottomMargin}
-          stroke="#D8C4A0"
-          strokeWidth={1}
+          stroke="#A88356"
+          strokeWidth={1.5}
         />
       ))}
+
       {stringOrder.map((s, idx) => {
         const y = topMargin + idx * stringGap;
         return (
@@ -119,10 +165,11 @@ function FretDiagram({ event }: { event: ChordEvent | undefined }) {
             x2={width - rightMargin}
             y2={y}
             stroke={STRING_COLORS[s]}
-            strokeWidth={2}
+            strokeWidth={idx > 2 ? 2.6 : 1.6}
           />
         );
       })}
+
       {frets &&
         stringOrder.map((s, idx) => {
           const y = topMargin + idx * stringGap;
@@ -149,7 +196,7 @@ function FretDiagram({ event }: { event: ChordEvent | undefined }) {
                 cy={y}
                 r={5}
                 fill="none"
-                stroke="#4A2E23"
+                stroke="#2A1B10"
                 strokeWidth={1.5}
               />
             );
@@ -157,19 +204,26 @@ function FretDiagram({ event }: { event: ChordEvent | undefined }) {
           const relFret = fret - baseFret;
           const x = nutX + fretGap * (relFret - 0.5);
           return (
-            <circle
-              key={`d-${s}`}
-              cx={x}
-              cy={y}
-              r={9}
-              fill={STRING_COLORS[s]}
-            />
+            <g key={`d-${s}`}>
+              <circle cx={x} cy={y} r={9} fill={STRING_COLORS[s]} />
+              <text
+                x={x}
+                y={y + 3.5}
+                textAnchor="middle"
+                fontSize={9}
+                fill="#fff"
+                fontWeight={600}
+              >
+                {fret}
+              </text>
+            </g>
           );
         })}
+
       {baseFret > 0 && (
         <text
           x={nutX + fretGap * 0.5}
-          y={height - 10}
+          y={height - 12}
           textAnchor="middle"
           fontSize={11}
           fill="#7A6A56"
@@ -216,6 +270,8 @@ export default function Home() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const tabNodesRef = useRef<OscillatorNode[]>([]);
   const tabAnimRef = useRef<number | null>(null);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
+  const columnRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   async function uploadAudio() {
     if (!file) return;
@@ -394,17 +450,22 @@ export default function Home() {
         const freq = fretToFrequency(s, fret);
 
         const osc = ctx.createOscillator();
-        osc.type = "triangle";
+        osc.type = "triangle"; // has odd harmonics — more clarity than sine, softer than sawtooth
         osc.frequency.value = freq;
 
         const filter = ctx.createBiquadFilter();
         filter.type = "lowpass";
-        filter.frequency.value = 2800;
+        filter.frequency.setValueAtTime(freq * 12, noteStart); // stays bright, well above fundamental
+        filter.frequency.exponentialRampToValueAtTime(
+          freq * 6,
+          noteStart + Math.max(dur, 0.05),
+        );
+        filter.Q.value = 0.5;
 
         const gain = ctx.createGain();
         const peak = 0.16;
         gain.gain.setValueAtTime(0.0001, noteStart);
-        gain.gain.exponentialRampToValueAtTime(peak, noteStart + 0.012);
+        gain.gain.exponentialRampToValueAtTime(peak, noteStart + 0.008);
         gain.gain.exponentialRampToValueAtTime(
           0.0001,
           noteStart + Math.max(dur, 0.05),
@@ -495,6 +556,21 @@ export default function Home() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [events, activeIndex]);
+
+  // keep tab position on currently playing chords/notes
+  useEffect(() => {
+    const container = tabScrollRef.current;
+    const col = columnRefs.current[activeIndex];
+    if (!container || !col) return;
+    const containerRect = container.getBoundingClientRect();
+    const colRect = col.getBoundingClientRect();
+    const offset =
+      colRect.left -
+      containerRect.left -
+      containerRect.width / 2 +
+      colRect.width / 2;
+    container.scrollBy({ left: offset, behavior: "smooth" });
+  }, [activeIndex]);
 
   function exportAsText() {
     const cols = events.map((ev, i) => getEffectiveFrets(ev, i));
@@ -708,25 +784,50 @@ export default function Home() {
             <button
               onClick={uploadAudio}
               disabled={!file || loading}
-              className="w-full mt-6 py-4 text-lg font-bold uppercase rounded-lg transition-all duration-300"
+              className="w-full mt-6 py-4 text-lg font-bold uppercase rounded-lg transition-all duration-150"
               style={{
-                background: !file ? "#ddd" : "#111",
-                color: !file ? "#999" : "#fff",
-                border: "none",
+                background: !file ? "#3A3A38" : "#111",
+                color: !file ? "#8A8A85" : "#fff",
+                border: !file ? "2px solid #3A3A38" : "2px solid #111",
+                boxShadow: !file ? "4px 4px 0 #D8CFC0" : "4px 4px 0 #C9A15E",
                 cursor: !file || loading ? "not-allowed" : "pointer",
                 fontFamily: "var(--font-stack-notch)",
                 letterSpacing: "0.08em",
-                filter: loading ? "brightness(1)" : undefined,
+                transform: "translate(0, 0)",
               }}
               onMouseEnter={(e) => {
-                if (file && !loading)
-                  e.currentTarget.style.filter = "brightness(1.1)";
+                if (file && !loading) {
+                  e.currentTarget.style.transform = "translate(-2px, -2px)";
+                  e.currentTarget.style.boxShadow = "6px 6px 0 #C9A15E";
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.filter = "brightness(1)";
+                e.currentTarget.style.transform = "translate(0, 0)";
+                e.currentTarget.style.boxShadow = file
+                  ? "4px 4px 0 #C9A15E"
+                  : "4px 4px 0 #D8CFC0";
+              }}
+              onMouseDown={(e) => {
+                if (file && !loading) {
+                  e.currentTarget.style.transform = "translate(4px, 4px)";
+                  e.currentTarget.style.boxShadow = "0px 0px 0 #C9A15E";
+                }
+              }}
+              onMouseUp={(e) => {
+                if (file && !loading) {
+                  e.currentTarget.style.transform = "translate(-2px, -2px)";
+                  e.currentTarget.style.boxShadow = "6px 6px 0 #C9A15E";
+                }
               }}
             >
-              <span className="inline-flex items-center justify-center gap-2.5">
+              <span
+                className="inline-flex items-center justify-center gap-2.5"
+                style={{
+                  animation: loading
+                    ? "pulse 1.2s ease-in-out infinite"
+                    : undefined,
+                }}
+              >
                 {loading && (
                   <span
                     style={{
@@ -734,18 +835,10 @@ export default function Home() {
                       height: 6,
                       borderRadius: "50%",
                       background: "#fff",
-                      animation: "pulse 1.2s ease-in-out infinite",
                     }}
                   />
                 )}
-                <span
-                  style={{
-                    opacity: loading ? 0.85 : 1,
-                    transition: "opacity 0.3s",
-                  }}
-                >
-                  {loading ? "listening" : "create tab"}
-                </span>
+                <span>{loading ? "listening" : "create tab"}</span>
               </span>
             </button>
 
@@ -774,18 +867,6 @@ export default function Home() {
 
         {(tab || audioUrl) && (
           <section className="mb-10">
-            <p
-              className="handwrite text-2xl mb-2 ml-2"
-              style={{ color: "#4A2E23" }}
-            >
-              {/* {isolated && (
-                <span className="text-base" style={{ color: "#7A6A56" }}>
-                  {" "}
-                  ({isolated} isolated)
-                </span>
-              )} */}
-            </p>
-
             {audioUrl && (
               <audio
                 ref={audioRef}
@@ -809,7 +890,7 @@ export default function Home() {
             {/* row of fret and guitar tab */}
             {events.length > 0 ? (
               <div
-                className="flex items-start gap-4 mb-2"
+                className="flex items-stretch mb-2"
                 style={{
                   width: "100vw",
                   marginLeft: "calc(50% - 50vw)",
@@ -817,200 +898,217 @@ export default function Home() {
                   boxSizing: "border-box",
                 }}
               >
-                {/* fretboard — fixed width, doesn't scroll */}
-                <div className="flex flex-col items-center flex-shrink-0">
-                  <div
-                    className="p-6"
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #cdcdcd",
-                    }}
-                  >
-                    <FretDiagram event={activeEvent} />
-                  </div>
-                  <p
-                    className="text-3xl font-black mt-4"
-                    style={{ color: "#D94827" }}
-                  >
-                    {activeEvent?.chord_name || ""}
-                  </p>
-                </div>
-
-                {/* guitar tab area */}
                 <div
-                  className="p-6 relative overflow-x-auto flex-1 min-w-0"
+                  className="flex items-stretch w-full"
                   style={{
-                    background: "#FFFFFF",
-                    border: "1px solid #cdcdcd",
+                    background: "#FBF6EC",
+                    border: "2px solid #111",
+                    borderRadius: 8,
+                    boxShadow: "5px 5px 0 #111",
+                    overflow: "hidden",
                   }}
                 >
-                  <div className="flex" style={{ minWidth: "max-content" }}>
-                    <div className="flex flex-col items-center px-2 py-1 mr-2">
-                      <div style={{ height: 22 * zoom }} />
-                      {[1, 2, 3, 4, 5, 6].map((s) => (
-                        // string letters
-                        <div
-                          key={s}
-                          className="handwrite text-lg flex items-center justify-center"
-                          style={{
-                            color: STRING_COLORS[s],
-                            height: TAB_ROW_HEIGHT * zoom,
-                          }}
-                        >
-                          {TAB_NAMES[s]}
-                        </div>
-                      ))}
-                    </div>
+                  {/* fretboard side */}
+                  <div
+                    className="flex flex-col items-center justify-center flex-shrink-0 p-6"
+                    style={{ borderRight: "1px solid #D8C4A0" }}
+                  >
+                    <FretDiagram event={activeEvent} zoom={zoom} />
+                    <p
+                      className="text-2xl font-black mt-3"
+                      style={{ color: "#D94827" }}
+                    >
+                      {activeEvent?.chord_name || ""}
+                    </p>
+                  </div>
 
-                    {events.map((ev, i) => {
-                      const effectiveFrets = getEffectiveFrets(ev, i);
-                      const showLabel =
-                        !!ev.chord_name &&
-                        ev.chord_name !== events[i - 1]?.chord_name;
-                      const altCount = ev.alternatives?.length ?? 1;
-
-                      return (
-                        <div
-                          key={i}
-                          className="flex flex-col items-center px-2 py-1 mx-0.5"
-                          style={{ position: "relative" }}
-                        >
+                  {/* tab side */}
+                  <div
+                    ref={tabScrollRef}
+                    className="p-6 relative overflow-x-auto flex-1 min-w-0"
+                  >
+                    <div
+                      className="flex"
+                      style={{ minWidth: "max-content", position: "relative" }}
+                    >
+                      <div className="flex flex-col items-center px-2 py-1 mr-2">
+                        <div style={{ height: 22 * zoom }} />
+                        {[1, 2, 3, 4, 5, 6].map((s) => (
                           <div
-                            className="handwrite"
+                            key={s}
+                            className="handwrite text-lg flex items-center justify-center"
                             style={{
-                              height: 22 * zoom,
-                              lineHeight: `${22 * zoom}px`,
-                              fontSize: 16 * zoom,
-                              color: "#8A342A",
-                              whiteSpace: "nowrap",
+                              color: STRING_COLORS[s],
+                              height: TAB_ROW_HEIGHT * zoom,
                             }}
                           >
-                            {showLabel ? ev.chord_name : ""}
+                            {TAB_NAMES[s]}
                           </div>
+                        ))}
+                      </div>
 
-                          {/* highlight bar */}
-                          <button
-                            onClick={(e) => handleColumnClick(ev, e)}
-                            className="flex flex-col items-center"
-                            style={{
-                              position: "relative",
-                              background:
-                                i === activeIndex
-                                  ? "rgba(217,72,39,0.15)"
-                                  : "transparent",
-                              cursor: "pointer",
-                              borderRadius: 4,
-                              padding: "4px 8px",
-                              margin: "0 -8px",
+                      {events.map((ev, i) => {
+                        const effectiveFrets = getEffectiveFrets(ev, i);
+                        const showLabel =
+                          !!ev.chord_name &&
+                          ev.chord_name !== events[i - 1]?.chord_name;
+                        const altCount = ev.alternatives?.length ?? 1;
+
+                        return (
+                          <div
+                            key={i}
+                            ref={(el) => {
+                              columnRefs.current[i] = el;
                             }}
-                            title={ev.chord_name || undefined}
+                            className="flex flex-col items-center px-2 py-1 mx-0.5"
+                            style={{ position: "relative" }}
                           >
-                            {[1, 2, 3, 4, 5, 6].map((s) => {
-                              const val = effectiveFrets[String(s)];
-                              const isEditing =
-                                editingCell?.index === i &&
-                                editingCell?.string === s;
-
-                              if (editMode && isEditing) {
-                                return (
-                                  <input
-                                    key={s}
-                                    autoFocus
-                                    defaultValue={
-                                      val === null || val === undefined
-                                        ? ""
-                                        : String(val)
-                                    }
-                                    onClick={(e) => e.stopPropagation()}
-                                    onBlur={(e) =>
-                                      commitFretEdit(i, s, e.target.value)
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter")
-                                        (e.target as HTMLInputElement).blur();
-                                      if (e.key === "Escape")
-                                        setEditingCell(null);
-                                    }}
-                                    style={{
-                                      width: 22,
-                                      height: TAB_ROW_HEIGHT * zoom,
-                                      fontSize: 12 * zoom,
-                                      textAlign: "center",
-                                      border: "1px solid #D94827",
-                                    }}
-                                  />
-                                );
-                              }
-
-                              const isEdited =
-                                editedFrets[i]?.[String(s)] !== undefined;
-
-                              return (
-                                <div
-                                  key={s}
-                                  onClick={(e) => {
-                                    if (editMode) {
-                                      e.stopPropagation();
-                                      setEditingCell({ index: i, string: s });
-                                    }
-                                  }}
-                                  className="text-sm flex items-center justify-center"
-                                  style={{
-                                    fontFamily:
-                                      "'SF Mono', Menlo, Consolas, monospace",
-                                    color: isEdited
-                                      ? "#1D7A46"
-                                      : STRING_COLORS[s],
-                                    height: TAB_ROW_HEIGHT * zoom,
-                                    fontSize: 13 * zoom,
-                                    cursor: editMode ? "text" : "pointer",
-                                    textDecoration: editMode
-                                      ? "underline dotted"
-                                      : "none",
-                                  }}
-                                >
-                                  {val ?? "-"}
-                                </div>
-                              );
-                            })}
-                          </button>
-
-                          {altCount > 1 && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                cycleAlternative(i, altCount);
-                              }}
-                              title={`voicing ${(selectedAlt[i] ?? 0) + 1}/${altCount} — click to cycle`}
-                              className="text-[10px] mt-1"
+                            <div
+                              className="handwrite"
                               style={{
-                                color: "#000000",
-                                background: "#fff",
-                                border: "1px solid #000000",
-                                borderRadius: 3,
-                                cursor: "pointer",
-                                padding: "0 3px",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 2,
-                                flexShrink: 0,
-                                flexGrow: 0,
+                                height: 22 * zoom,
+                                lineHeight: `${22 * zoom}px`,
+                                fontSize: 16 * zoom,
+                                color: "#8A342A",
                                 whiteSpace: "nowrap",
                               }}
                             >
-                              <img
-                                src="/swap.svg"
-                                width={12}
-                                height={12}
-                                style={{ width: 12, height: 12, flexShrink: 0 }}
-                                alt="Cycle voicing"
-                              />
-                              {(selectedAlt[i] ?? 0) + 1}/{altCount}
+                              {showLabel ? ev.chord_name : ""}
+                            </div>
+
+                            <button
+                              onClick={(e) => handleColumnClick(ev, e)}
+                              className="flex flex-col items-center"
+                              style={{
+                                position: "relative",
+                                background:
+                                  i === activeIndex
+                                    ? "rgba(217,72,39,0.15)"
+                                    : "transparent",
+                                cursor: "pointer",
+                                borderRadius: 4,
+                                padding: "4px 8px",
+                                margin: "0 -8px",
+                              }}
+                              title={ev.chord_name || undefined}
+                            >
+                              {[1, 2, 3, 4, 5, 6].map((s) => {
+                                const val = effectiveFrets[String(s)];
+                                const isEditing =
+                                  editingCell?.index === i &&
+                                  editingCell?.string === s;
+
+                                if (editMode && isEditing) {
+                                  return (
+                                    <input
+                                      key={s}
+                                      autoFocus
+                                      defaultValue={
+                                        val === null || val === undefined
+                                          ? ""
+                                          : String(val)
+                                      }
+                                      onClick={(e) => e.stopPropagation()}
+                                      onBlur={(e) =>
+                                        commitFretEdit(i, s, e.target.value)
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter")
+                                          (e.target as HTMLInputElement).blur();
+                                        if (e.key === "Escape")
+                                          setEditingCell(null);
+                                      }}
+                                      style={{
+                                        width: 22,
+                                        height: TAB_ROW_HEIGHT * zoom,
+                                        fontSize: 12 * zoom,
+                                        textAlign: "center",
+                                        border: "1px solid #D94827",
+                                      }}
+                                    />
+                                  );
+                                }
+
+                                const isEdited =
+                                  editedFrets[i]?.[String(s)] !== undefined;
+
+                                return (
+                                  <div
+                                    key={s}
+                                    onClick={(e) => {
+                                      if (editMode) {
+                                        e.stopPropagation();
+                                        setEditingCell({ index: i, string: s });
+                                      }
+                                    }}
+                                    className="text-sm flex items-center justify-center"
+                                    style={{
+                                      fontFamily:
+                                        "'SF Mono', Menlo, Consolas, monospace",
+                                      color: isEdited
+                                        ? "#1D7A46"
+                                        : STRING_COLORS[s],
+                                      height: TAB_ROW_HEIGHT * zoom,
+                                      fontSize: 13 * zoom,
+                                      cursor: editMode ? "text" : "pointer",
+                                      textDecoration: editMode
+                                        ? "underline dotted"
+                                        : "none",
+                                    }}
+                                  >
+                                    {val ?? "-"}
+                                  </div>
+                                );
+                              })}
                             </button>
-                          )}
-                        </div>
-                      );
-                    })}
+
+                            {altCount > 1 && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cycleAlternative(i, altCount);
+                                }}
+                                title={`voicing ${(selectedAlt[i] ?? 0) + 1}/${altCount} — click to cycle`}
+                                className="mt-1"
+                                style={{
+                                  color: "#9A8567",
+                                  background: "#F3EADC",
+                                  border: "1px solid #D8C4A0",
+                                  borderRadius: 4,
+                                  cursor: "pointer",
+                                  padding: "3px 5px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  flexShrink: 0,
+                                  flexGrow: 0,
+                                  opacity: 0.75,
+                                  transition: "opacity 0.15s ease",
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.opacity = "1")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.opacity = "0.75")
+                                }
+                              >
+                                <img
+                                  src="/swap.svg"
+                                  width={11}
+                                  height={11}
+                                  style={{
+                                    width: 11,
+                                    height: 11,
+                                    flexShrink: 0,
+                                    opacity: 0.7,
+                                  }}
+                                  alt="Cycle voicing"
+                                />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1022,8 +1120,6 @@ export default function Home() {
                     background: "#FBF6EC",
                     border: "1px solid #D8C4A0",
                     boxShadow: "0 3px 8px rgba(0,0,0,0.1)",
-                    backgroundImage:
-                      "repeating-linear-gradient(180deg, transparent, transparent 27px, rgba(138,106,61,0.12) 28px)",
                   }}
                 >
                   <pre
@@ -1084,17 +1180,59 @@ export default function Home() {
                 <div className="flex items-center gap-4">
                   <button
                     onClick={togglePlay}
-                    className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                    className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-150"
                     style={{
-                      // your recording play button
-                      background: "#000000",
-                      color: "#FBF6EC",
+                      background: "#4A2E23",
                       border: "none",
                       cursor: "pointer",
+                      boxShadow: "0 3px 8px rgba(74,46,35,0.35)",
                     }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.transform = "scale(1.03)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.transform = "scale(1)")
+                    }
+                    onMouseDown={(e) =>
+                      (e.currentTarget.style.transform = "scale(0.96)")
+                    }
+                    onMouseUp={(e) =>
+                      (e.currentTarget.style.transform = "scale(1.03)")
+                    }
                     aria-label={isPlaying ? "pause" : "play"}
                   >
-                    {isPlaying ? "❚❚" : "▶"}
+                    {isPlaying ? (
+                      <div className="flex gap-[3px]">
+                        <div
+                          style={{
+                            width: 4,
+                            height: 14,
+                            borderRadius: 2,
+                            background: "#FBF6EC",
+                          }}
+                        />
+                        <div
+                          style={{
+                            width: 4,
+                            height: 14,
+                            borderRadius: 2,
+                            background: "#FBF6EC",
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          width: 0,
+                          height: 0,
+                          borderTop: "7px solid transparent",
+                          borderBottom: "7px solid transparent",
+                          borderLeft: "11px solid #FBF6EC",
+                          marginLeft: 3,
+                          borderRadius: 2,
+                        }}
+                      />
+                    )}
                   </button>
                   <input
                     className="scrub flex-1"
@@ -1163,20 +1301,62 @@ export default function Home() {
                 <div className="flex items-center gap-4">
                   <button
                     onClick={toggleTabAudio}
-                    className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                    className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-150"
                     style={{
-                      // transcribed tab play button
-                      background: "#000000",
-                      color: "#FBF6EC",
+                      background: "#4A2E23",
                       border: "none",
                       cursor: "pointer",
+                      boxShadow: "0 3px 8px rgba(74,46,35,0.35)",
                     }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.transform = "scale(1.03)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.transform = "scale(1)")
+                    }
+                    onMouseDown={(e) =>
+                      (e.currentTarget.style.transform = "scale(0.96)")
+                    }
+                    onMouseUp={(e) =>
+                      (e.currentTarget.style.transform = "scale(1.03)")
+                    }
                     aria-label={
                       isTabPlaying ? "pause tab audio" : "play tab audio"
                     }
                     title="Play back the transcribed tab as synthesized notes — independent of the song audio above"
                   >
-                    {isTabPlaying ? "❚❚" : "▶"}
+                    {isTabPlaying ? (
+                      <div className="flex gap-[3px]">
+                        <div
+                          style={{
+                            width: 4,
+                            height: 14,
+                            borderRadius: 2,
+                            background: "#FBF6EC",
+                          }}
+                        />
+                        <div
+                          style={{
+                            width: 4,
+                            height: 14,
+                            borderRadius: 2,
+                            background: "#FBF6EC",
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          width: 0,
+                          height: 0,
+                          borderTop: "7px solid transparent",
+                          borderBottom: "7px solid transparent",
+                          borderLeft: "11px solid #FBF6EC",
+                          marginLeft: 3,
+                          borderRadius: 2,
+                        }}
+                      />
+                    )}
                   </button>
                   <input
                     className="scrub flex-1"
@@ -1322,8 +1502,9 @@ export default function Home() {
                     className="flex items-center gap-1.5 text-xs whitespace-nowrap"
                     style={{ color: "#8A7B63" }}
                   >
+                    <kbd>-</kbd>
                     <kbd>+</kbd>
-                    <kbd>-</kbd> zoom
+                    zoom
                   </span>
                 </div>
               </>
@@ -1350,11 +1531,6 @@ export default function Home() {
                     boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
                   }}
                 >
-                  <div
-                    style={{
-                      background: STRING_COLORS[note.string] ?? "#8A6A3D",
-                    }}
-                  />
                   <div
                     className="paper-font text-lg"
                     style={{
