@@ -19,7 +19,7 @@ Given an audio file, the process:
 
 - **Frontend**: Next.js, deployed on Vercel
 - **Backend**: Flask (Python), deployed on Render
-- **Job queue**: RQ (Redis Queue) — transcription jobs run asynchronously on
+- **Job queue**: RQ (Redis Queue) - transcription jobs run asynchronously on
   a background worker
 - **Audio processing**: Basic Pitch inference offloaded to Modal
 - **Signal processing**: librosa, scipy
