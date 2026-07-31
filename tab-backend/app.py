@@ -4,6 +4,7 @@ import uuid
 import modal
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from collections import defaultdict
 
 app = Flask(__name__)
 CORS(app)
@@ -18,6 +19,23 @@ MODAL_APP_NAME = "guitar-whisperer"
 transcribe_fn = modal.Function.from_name(MODAL_APP_NAME, "transcribe")
 
 _last_cleanup = 0
+
+# ------ rate limiting --------
+IS_PROD = os.environ.get("ENV") == "production"
+RATE_LIMIT = 5
+WINDOW_SECONDS = 24 * 3600
+_request_log = defaultdict(list)
+
+
+def is_rate_limited(ip):
+    if not IS_PROD:
+        return False
+    now = time.time()
+    _request_log[ip] = [t for t in _request_log[ip] if now - t < WINDOW_SECONDS]
+    if len(_request_log[ip]) >= RATE_LIMIT:
+        return True
+    _request_log[ip].append(now)
+    return False
 
 
 def cleanup_old_uploads():
@@ -41,6 +59,10 @@ def save_upload(audio_file):
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    if is_rate_limited(ip):
+        return jsonify({"error": "Demo limit reached."}), 429
+
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
 
