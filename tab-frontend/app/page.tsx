@@ -46,6 +46,8 @@ export default function Home() {
 
   const [manualIndex, setManualIndex] = useState<number | null>(null);
 
+  const [rateLimited, setRateLimited] = useState<string | null>(null);
+
   async function uploadAudio() {
     if (!file) return;
     stopTabAudio();
@@ -73,12 +75,16 @@ export default function Home() {
       setDuration(result.duration || 0);
       if (result.audio_url) setAudioUrl(`${BACKEND}${result.audio_url}`);
     } catch (err) {
-      console.error(err);
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Couldn't reach the backend. Check the server is running.",
-      );
+          : "Couldn't reach the backend. Check the server is running.";
+
+      if (message.includes("Demo limit reached")) {
+        setRateLimited(message);
+      } else {
+        setError(message);
+      }
     }
 
     setLoading(false);
@@ -219,6 +225,38 @@ export default function Home() {
     >
       {/* drag and drop over entire screen */}
       <DropOverlay isDragging={isDragging} />
+
+      {/* rate limited overlay */}
+      {rateLimited && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{
+            background: "rgba(245, 244, 239, 0.92)",
+            backdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            className="flex flex-col items-center gap-4 px-10 py-12 text-center max-w-md mx-4"
+            style={{
+              background: "#FBF6EC",
+              border: "1px solid #D8C4A0",
+              borderRadius: "10px",
+              boxShadow: "0 3px 8px rgba(0,0,0,0.1)",
+            }}
+          >
+            <h2
+              className="text-2xl font-black"
+              style={{
+                fontFamily: "var(--font-stack-notch)",
+                color: "#111",
+                letterSpacing: "-0.03em",
+              }}
+            >
+              Demo limit reached.
+            </h2>
+          </div>
+        </div>
+      )}
 
       <div className="absolute top-6 left-6 flex items-center gap-3 z-10">
         <span
