@@ -44,6 +44,8 @@ export default function Home() {
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const columnRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
+  const [manualIndex, setManualIndex] = useState<number | null>(null);
+
   async function uploadAudio() {
     if (!file) return;
     stopTabAudio();
@@ -57,6 +59,7 @@ export default function Home() {
     setIsPlaying(false);
     setPlaybackRate(1);
     setZoom(1);
+    setManualIndex(null);
     resetAll();
 
     const formData = new FormData();
@@ -95,15 +98,7 @@ export default function Home() {
     const audio = audioRef.current;
     if (audio) audio.currentTime = t;
     setCurrentTime(t);
-  }
-
-  function jumpToChord(direction: 1 | -1) {
-    if (events.length === 0) return;
-    const next = Math.min(
-      events.length - 1,
-      Math.max(0, activeIndex + direction),
-    );
-    seekTo(events[next].time);
+    setManualIndex(null);
   }
 
   const {
@@ -114,19 +109,59 @@ export default function Home() {
 
   const {
     isTabPlaying, tabActiveIndex, tabCurrentTime, tabPlaybackRate,
-    setTabPlaybackRate, playTabAudio, stopTabAudio, toggleTabAudio, seekTab,
+    setTabPlaybackRate, playTabAudio, stopTabAudio,
+    toggleTabAudio: rawToggleTabAudio,
+    seekTab: rawSeekTab,
   } = SynthPlayer(events, duration, getEffectiveFrets);
 
-  const activeIndex =
-    isTabPlaying && tabActiveIndex !== null
-      ? tabActiveIndex
-      : events.reduce((acc, ev, i) => (currentTime >= ev.time ? i : acc), 0);
-  const activeEvent = events[activeIndex];
+  function seekTab(t: number) {
+      rawSeekTab(t);
+      setManualIndex(null);
+  }
 
+  function toggleTabAudio() {
+      if (!isTabPlaying) setManualIndex(null); // starting playback — clear stale index
+      rawToggleTabAudio();
+  }
+
+  function togglePlayer() {
+    if (playerSource === "tab") {
+      toggleTabAudio();
+    } else {
+      togglePlay();
+    }
+  }
+
+  function jumpToChord(direction: 1 | -1) {
+    if (events.length === 0) return;
+    const next = Math.min(events.length - 1, Math.max(0, activeIndex + direction));
+    if (playerSource === "tab") {
+      seekTab(events[next].time);
+    } else {
+      seekTo(events[next].time);
+    }
+    setManualIndex(next);
+  }
 
   function handleColumnClick(ev: ChordEvent, e: React.MouseEvent) {
-    seekTo(ev.time);
+    if (playerSource === "tab") {
+      seekTab(ev.time);
+    } else {
+      seekTo(ev.time);
+    }
   }
+
+  const activeIndex =
+    playerSource === "tab"
+      ? tabActiveIndex !== null
+        ? tabActiveIndex
+        : manualIndex !== null
+        ? manualIndex
+        : events.reduce((acc, ev, i) => (tabCurrentTime >= ev.time ? i : acc), 0)
+      : manualIndex !== null
+      ? manualIndex
+      : events.reduce((acc, ev, i) => (currentTime >= ev.time ? i : acc), 0);
+  const activeEvent = events[activeIndex];
 
   // apply playback speed to the audio element
   useEffect(() => {
@@ -140,16 +175,13 @@ export default function Home() {
 
   // keyboard shortcuts
   KeyboardShortcuts({
-    onPlayPause: () => {
-      setPlayerSource("song");
-      togglePlay();
-    },
+    onPlayPause: togglePlayer,
     onNext: () => jumpToChord(1),
     onPrev: () => jumpToChord(-1),
     onZoomIn: () => setZoom((z) => Math.min(2, Math.round((z + 0.1) * 100) / 100)),
     onZoomOut: () => setZoom((z) => Math.max(0.6, Math.round((z - 0.1) * 100) / 100)),
   });
- 
+
 
   // keep tab position on currently playing chords/notes
   useEffect(() => {
@@ -177,7 +209,7 @@ export default function Home() {
   }, setIsDragging);
 
   return (
-    <main 
+    <main
       className="min-h-screen relative paper-texture"
       style={{
         background: "#F5F4EF",
@@ -247,7 +279,10 @@ export default function Home() {
                     setDuration(e.currentTarget.duration);
                   }
                 }}
-                onPlay={() => setIsPlaying(true)}
+                onPlay={() => {
+                  setIsPlaying(true);
+                  setManualIndex(null);
+                }}
                 onPause={() => setIsPlaying(false)}
                 onEnded={() => setIsPlaying(false)}
                 style={{ display: "none" }}

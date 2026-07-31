@@ -26,16 +26,20 @@ export function SynthPlayer(
   const audioCtxRef = useRef<AudioContext | null>(null);
   const tabNodesRef = useRef<OscillatorNode[]>([]);
   const tabAnimRef = useRef<number | null>(null);
+  function getAudioContext(): AudioContext {
+    if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      audioCtxRef.current = new AudioContextClass();
+    }
+    return audioCtxRef.current;
+  }
 
   const stopTabAudio = useCallback(() => {
     tabNodesRef.current.forEach((osc) => {
       try { osc.stop(); } catch {}
     });
     tabNodesRef.current = [];
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
-      audioCtxRef.current = null;
-    }
+    // don't close/null the context here anymore — just stop the nodes and the loop
     if (tabAnimRef.current !== null) {
       cancelAnimationFrame(tabAnimRef.current);
       tabAnimRef.current = null;
@@ -53,10 +57,8 @@ export function SynthPlayer(
         0,
         events.reduce((acc, ev, i) => (ev.time <= fromTime ? i : acc), 0),
       );
-
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx: AudioContext = new AudioContextClass();
-      audioCtxRef.current = ctx;
+      const ctx = getAudioContext();
+      if (ctx.state === "suspended") ctx.resume();
 
       const rate = tabPlaybackRate;
       const startAt = ctx.currentTime + 0.08;
@@ -143,7 +145,13 @@ export function SynthPlayer(
     [isTabPlaying, stopTabAudio, playTabAudio],
   );
 
-  useEffect(() => stopTabAudio, [stopTabAudio]);
+  useEffect(() => {
+    return () => {
+      stopTabAudio();
+      audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
+    };
+  }, [stopTabAudio]);
 
   return {
     isTabPlaying, tabActiveIndex, tabCurrentTime, tabPlaybackRate,

@@ -63,7 +63,7 @@ export function UploadPanel({
             background: !file ? "#3A3A38" : "#111",
             color: !file ? "#8A8A85" : "#fff",
             border: !file ? "2px solid #3A3A38" : "2px solid #111",
-            boxShadow: !file ? "4px 4px 0 #D8CFC0" : "4px 4px 0 #C9A15E",
+            boxShadow: !file ? "4px 4px 0 #D8CFC0" : "4px 4px 0 #b8704d",
             cursor: !file || loading ? "not-allowed" : "pointer",
             fontFamily: "var(--font-stack-notch)",
             letterSpacing: "0.08em",
@@ -72,23 +72,23 @@ export function UploadPanel({
           onMouseEnter={(e) => {
             if (file && !loading) {
               e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "6px 6px 0 #C9A15E";
+              e.currentTarget.style.boxShadow = "6px 6px 0 #b8704d";
             }
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = "translate(0, 0)";
-            e.currentTarget.style.boxShadow = file ? "6px 6px 0 #C9A15E" : "4px 4px 0 #D8CFC0";
+            e.currentTarget.style.boxShadow = file ? "6px 6px 0 #b8704d" : "4px 4px 0 #D8CFC0";
           }}
           onMouseDown={(e) => {
             if (file && !loading) {
               e.currentTarget.style.transform = "translate(4px, 4px)";
-              e.currentTarget.style.boxShadow = "0px 0px 0 #C9A15E";
+              e.currentTarget.style.boxShadow = "0px 0px 0 #b8704d";
             }
           }}
           onMouseUp={(e) => {
             if (file && !loading) {
               e.currentTarget.style.transform = "translate(-2px, -2px)";
-              e.currentTarget.style.boxShadow = "6px 6px 0 #bc8057";
+              e.currentTarget.style.boxShadow = "6px 6px 0 #b17349";
             }
           }}
         >
