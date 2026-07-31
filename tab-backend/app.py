@@ -106,6 +106,9 @@ def _occasional_cleanup():
         _last_cleanup = now
         cleanup_old_uploads()
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
     app.run(debug=True, port=5002)
