@@ -8,7 +8,7 @@ from redis import Redis
 from rq import Queue
 from rq.worker import SimpleWorker
 
-import tasks  # noqa: F401  (registers run_transcription for RQ to resolve)
+import tasks
 from pitch import _get_basic_pitch_model
 
 
