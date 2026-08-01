@@ -295,12 +295,27 @@ export default function Home() {
         </div>
       )}
 
-      <div className="absolute top-6 left-6 flex items-center gap-3 z-10">
+      <div className="absolute top-6 left-6 flex items-center gap-3 z-10 group">
         <span
-          className="text-lg"
+          className="text-xl cursor-default"
           style={{ fontFamily: "var(--font-stack-notch)", userSelect: "none" }}
         >
           guitar whisperer
+        </span>
+        <span
+          className="absolute left-full top-1/2 -translate-y-1/2 ml-3 
+          whitespace-nowrap text-[11px] uppercase tracking-[0.1em] opacity-0 
+          group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+          style={{
+            color: "#998",
+            background: "#FBF6EC",
+            border: "1px solid #D8C4A0",
+            borderRadius: "5px",
+            padding: "3px 8px",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+          }}
+        >
+          built by emily wei
         </span>
       </div>
 
