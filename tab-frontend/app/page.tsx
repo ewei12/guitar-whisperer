@@ -231,29 +231,66 @@ export default function Home() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{
-            background: "rgba(245, 244, 239, 0.92)",
-            backdropFilter: "blur(6px)",
+            background: "rgba(245, 244, 239, 0.9)",
+            backdropFilter: "blur(8px)",
           }}
         >
           <div
-            className="flex flex-col items-center gap-4 px-10 py-12 text-center max-w-md mx-4"
+            className="flex flex-col items-center text-center max-w-md mx-4"
             style={{
               background: "#FBF6EC",
               border: "1px solid #D8C4A0",
-              borderRadius: "10px",
-              boxShadow: "0 3px 8px rgba(0,0,0,0.1)",
+              borderRadius: "14px",
+              padding: "44px 48px",
+              boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
             }}
           >
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: "50%",
+                background: "rgba(175,58,40,0.08)",
+                border: "1px solid rgba(175,58,40,0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 18,
+              }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#af3a28" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <polyline points="12 7 12 12 15 14" />
+              </svg>
+            </div>
             <h2
               className="text-2xl font-black"
               style={{
                 fontFamily: "var(--font-stack-notch)",
                 color: "#111",
                 letterSpacing: "-0.03em",
+                marginBottom: 10,
               }}
             >
-              Demo limit reached.
+              Demo limit reached
             </h2>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                fontSize: 12,
+                color: "#998",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                borderTop: "1px solid #D8C4A0",
+                paddingTop: 14,
+                width: "100%",
+              }}
+            >
+              Resets daily
+            </div>
           </div>
         </div>
       )}
