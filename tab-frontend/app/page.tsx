@@ -304,15 +304,15 @@ export default function Home() {
         </span>
         <span
           className="absolute left-full top-1/2 -translate-y-1/2 ml-3 
-          whitespace-nowrap text-[11px] uppercase tracking-[0.1em] opacity-0 
+          whitespace-nowrap text-[11px] uppercase tracking-[0.12em] opacity-0 
           group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
           style={{
-            color: "#998",
-            background: "#FBF6EC",
-            border: "1px solid #D8C4A0",
-            borderRadius: "5px",
-            padding: "3px 8px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+            color: "#5a422e",
+            background: "#fff",
+            border: "1px solid #e8d9c8",
+            borderRadius: "6px",
+            padding: "4px 10px",
+            boxShadow: "0 3px 10px rgba(58,42,28,0.15)",
           }}
         >
           built by emily wei
